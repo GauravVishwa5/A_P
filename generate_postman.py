@@ -1,0 +1,825 @@
+"""Script to generate a production-ready Postman collection v2.1.0 with automated token management."""
+
+import json
+from pathlib import Path
+
+# Common test script snippets
+LOGIN_TEST_SCRIPT = """
+if (pm.response.code === 200) {
+    const res = pm.response.json();
+    let token = null;
+    let refresh = null;
+
+    if (res.tokens && res.tokens.access_token) {
+        token = res.tokens.access_token;
+        refresh = res.tokens.refresh_token;
+    } else if (res.access_token) {
+        token = res.access_token;
+        refresh = res.refresh_token;
+    }
+
+    if (token) {
+        pm.collectionVariables.set("access_token", token);
+        if (refresh) {
+            pm.collectionVariables.set("refresh_token", refresh);
+        }
+        console.log("✅ Bearer token automatically captured and set in collectionVariables!");
+    }
+}
+"""
+
+REGISTER_TEST_SCRIPT = """
+if (pm.response.code === 201) {
+    const res = pm.response.json();
+    if (res.id) {
+        pm.collectionVariables.set("user_id", res.id);
+        pm.collectionVariables.set("user_email", res.email);
+        console.log("✅ User registered with ID: " + res.id);
+    }
+
+    // Automatically authenticate the newly registered user and set Bearer token
+    try {
+        const reqBody = JSON.parse(pm.request.body.raw);
+        const baseUrl = pm.collectionVariables.get("base_url") || "http://localhost:8000";
+
+        pm.sendRequest({
+            url: baseUrl + "/api/v1/auth/login",
+            method: "POST",
+            header: {
+                "Content-Type": "application/json"
+            },
+            body: {
+                mode: "raw",
+                raw: JSON.stringify({
+                    email: reqBody.email,
+                    password: reqBody.password
+                })
+            }
+        }, function (err, loginRes) {
+            if (!err && loginRes.code === 200) {
+                const loginData = loginRes.json();
+                if (loginData.tokens && loginData.tokens.access_token) {
+                    pm.collectionVariables.set("access_token", loginData.tokens.access_token);
+                    pm.collectionVariables.set("refresh_token", loginData.tokens.refresh_token);
+                    console.log("🚀 Auto-login successful! Bearer token automatically set in collectionVariables.");
+                }
+            } else {
+                console.warn("Auto-login response: " + (loginRes ? loginRes.code : err));
+            }
+        });
+    } catch (e) {
+        console.error("Auto-login error:", e);
+    }
+}
+"""
+
+REFRESH_TEST_SCRIPT = """
+if (pm.response.code === 200) {
+    const res = pm.response.json();
+    if (res.access_token) {
+        pm.collectionVariables.set("access_token", res.access_token);
+        pm.collectionVariables.set("refresh_token", res.refresh_token);
+        console.log("🔄 Tokens refreshed and stored in collectionVariables!");
+    }
+}
+"""
+
+DOCTOR_PROFILE_TEST_SCRIPT = """
+if (pm.response.code === 201 || pm.response.code === 200) {
+    const res = pm.response.json();
+    if (res.id) {
+        pm.collectionVariables.set("doctor_id", res.id);
+        console.log("✅ doctor_id saved: " + res.id);
+    }
+}
+"""
+
+AVAILABILITY_SLOTS_TEST_SCRIPT = """
+if (pm.response.code === 201) {
+    const res = pm.response.json();
+    if (Array.isArray(res) && res.length > 0 && res[0].id) {
+        pm.collectionVariables.set("slot_id", res[0].id);
+        console.log("✅ slot_id saved: " + res[0].id);
+    }
+}
+"""
+
+BOOKING_TEST_SCRIPT = """
+if (pm.response.code === 201 || pm.response.code === 200) {
+    const res = pm.response.json();
+    if (res.id) {
+        pm.collectionVariables.set("consultation_id", res.id);
+        console.log("✅ consultation_id saved: " + res.id);
+    }
+}
+"""
+
+PRESCRIPTION_TEST_SCRIPT = """
+if (pm.response.code === 201) {
+    const res = pm.response.json();
+    if (res.id) {
+        pm.collectionVariables.set("prescription_id", res.id);
+        console.log("✅ prescription_id saved: " + res.id);
+    }
+}
+"""
+
+PAYMENT_TEST_SCRIPT = """
+if (pm.response.code === 201) {
+    const res = pm.response.json();
+    if (res.id) {
+        pm.collectionVariables.set("payment_id", res.id);
+        console.log("✅ payment_id saved: " + res.id);
+    }
+}
+"""
+
+
+def make_url(path: str, query: list[dict] | None = None) -> dict:
+    clean_path = path.strip("/")
+    parts = clean_path.split("/")
+    raw_url = "{{base_url}}/" + clean_path
+    if query:
+        query_str = "&".join(f"{q['key']}={q['value']}" for q in query)
+        raw_url = f"{raw_url}?{query_str}"
+    res = {
+        "raw": raw_url,
+        "host": ["{{base_url}}"],
+        "path": parts,
+    }
+    if query:
+        res["query"] = query
+    return res
+
+
+def make_event(script_type: str, script_code: str) -> list[dict]:
+    return [
+        {
+            "listen": script_type,
+            "script": {
+                "type": "text/javascript",
+                "exec": [line for line in script_code.strip().split("\n")],
+            },
+        }
+    ]
+
+
+def build_collection() -> dict:
+    return {
+        "info": {
+            "_postman_id": "a92c4e20-3fa1-4dc2-b5e1-amrutam-api-v1",
+            "name": "Amrutam Telemedicine Backend API",
+            "description": (
+                "Complete, automated Postman collection for the Amrutam Telemedicine platform.\n\n"
+                "### ⚡ Automated Authentication Features:\n"
+                "1. **Auto-Bearer Token on Register**: When you execute `Register Patient` or `Register Doctor`, a test script creates the user AND immediately issues a background login call, setting `{{access_token}}` and `{{refresh_token}}` automatically!\n"
+                "2. **Auto-Bearer Token on Login**: Executing `Login` immediately extracts and sets `{{access_token}}` and `{{refresh_token}}` in collection variables.\n"
+                "3. **Inherited Bearer Auth**: All protected endpoints inherit `Authorization: Bearer {{access_token}}` from the collection level. Zero manual copying required.\n"
+                "4. **Token Refresh Rotation**: Executing `Refresh Token` rotates and stores the new token pair seamlessly.\n"
+                "5. **Entity ID Auto-Capture**: IDs for doctors (`doctor_id`), slots (`slot_id`), consultations (`consultation_id`), prescriptions (`prescription_id`), and payments (`payment_id`) are auto-saved upon creation."
+            ),
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        },
+        "auth": {
+            "type": "bearer",
+            "bearer": [
+                {
+                    "key": "token",
+                    "value": "{{access_token}}",
+                    "type": "string",
+                }
+            ],
+        },
+        "variable": [
+            {"key": "base_url", "value": "http://localhost:8000", "type": "string"},
+            {"key": "access_token", "value": "", "type": "string"},
+            {"key": "refresh_token", "value": "", "type": "string"},
+            {"key": "user_id", "value": "", "type": "string"},
+            {"key": "user_email", "value": "", "type": "string"},
+            {"key": "doctor_id", "value": "", "type": "string"},
+            {"key": "slot_id", "value": "", "type": "string"},
+            {"key": "consultation_id", "value": "", "type": "string"},
+            {"key": "prescription_id", "value": "", "type": "string"},
+            {"key": "payment_id", "value": "", "type": "string"},
+        ],
+        "item": [
+            # 0. Health & Observability
+            {
+                "name": "0. Health & Observability",
+                "item": [
+                    {
+                        "name": "Liveness Probe (Health)",
+                        "request": {
+                            "auth": {"type": "noauth"},
+                            "method": "GET",
+                            "header": [],
+                            "url": make_url("/health"),
+                            "description": "Liveness check verifying the HTTP service is operational.",
+                        },
+                    },
+                    {
+                        "name": "Readiness Probe (Ready)",
+                        "request": {
+                            "auth": {"type": "noauth"},
+                            "method": "GET",
+                            "header": [],
+                            "url": make_url("/ready"),
+                            "description": "Readiness probe verifying database and Redis connections.",
+                        },
+                    },
+                    {
+                        "name": "Prometheus Metrics",
+                        "request": {
+                            "auth": {"type": "noauth"},
+                            "method": "GET",
+                            "header": [],
+                            "url": make_url("/metrics"),
+                            "description": "Prometheus telemetry and latency histogram metrics.",
+                        },
+                    },
+                ],
+            },
+            # 1. Authentication
+            {
+                "name": "1. Authentication",
+                "item": [
+                    {
+                        "name": "Register Patient (Auto-Login & Sets Bearer)",
+                        "event": make_event("test", REGISTER_TEST_SCRIPT),
+                        "request": {
+                            "auth": {"type": "noauth"},
+                            "method": "POST",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "email": "patient_{{$timestamp}}@amrutam.co.in",
+                                        "password": "Password123!",
+                                        "role": "PATIENT",
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/auth/register"),
+                            "description": "Registers a new patient and automatically issues a login request to save `access_token` and `refresh_token` to collection variables.",
+                        },
+                    },
+                    {
+                        "name": "Register Doctor (Auto-Login & Sets Bearer)",
+                        "event": make_event("test", REGISTER_TEST_SCRIPT),
+                        "request": {
+                            "auth": {"type": "noauth"},
+                            "method": "POST",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "email": "doctor_{{$timestamp}}@amrutam.co.in",
+                                        "password": "Password123!",
+                                        "role": "DOCTOR",
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/auth/register"),
+                            "description": "Registers a doctor account and automatically signs them in, setting the Bearer token for subsequent requests.",
+                        },
+                    },
+                    {
+                        "name": "Login (Sets Bearer Token)",
+                        "event": make_event("test", LOGIN_TEST_SCRIPT),
+                        "request": {
+                            "auth": {"type": "noauth"},
+                            "method": "POST",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "email": "dr.sharma@amrutam.co.in",
+                                        "password": "Password123!",
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/auth/login"),
+                            "description": "Authenticates credentials and automatically extracts `access_token` and `refresh_token` into collection variables.",
+                        },
+                    },
+                    {
+                        "name": "Refresh Token Pair",
+                        "event": make_event("test", REFRESH_TEST_SCRIPT),
+                        "request": {
+                            "auth": {"type": "noauth"},
+                            "method": "POST",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "refresh_token": "{{refresh_token}}",
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/auth/token/refresh"),
+                            "description": "Rotates refresh token and automatically saves the new access and refresh token pair.",
+                        },
+                    },
+                    {
+                        "name": "Enroll MFA (TOTP)",
+                        "request": {
+                            "method": "POST",
+                            "header": [],
+                            "url": make_url("/api/v1/auth/mfa/enroll"),
+                            "description": "Generates TOTP secret key and provisioning URI for authenticator apps (e.g. Google Authenticator).",
+                        },
+                    },
+                    {
+                        "name": "Verify MFA Code",
+                        "event": make_event("test", LOGIN_TEST_SCRIPT),
+                        "request": {
+                            "auth": {"type": "noauth"},
+                            "method": "POST",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "code": "123456",
+                                        "mfa_token": "mfa_challenge_token_here",
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/auth/mfa/verify"),
+                            "description": "Verifies 6-digit TOTP code against MFA challenge and issues new tokens.",
+                        },
+                    },
+                    {
+                        "name": "Logout (Revoke Tokens)",
+                        "request": {
+                            "method": "POST",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "refresh_token": "{{refresh_token}}",
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/auth/logout"),
+                            "description": "Revokes current access token in Redis blacklist and invalidates the refresh token.",
+                        },
+                    },
+                ],
+            },
+            # 2. Users & Profiles
+            {
+                "name": "2. Users & Profiles",
+                "item": [
+                    {
+                        "name": "Get Current Profile (Me)",
+                        "request": {
+                            "method": "GET",
+                            "header": [],
+                            "url": make_url("/api/v1/users/me"),
+                            "description": "Retrieves the authenticated user's demographic profile information.",
+                        },
+                    },
+                    {
+                        "name": "Update Profile (Me)",
+                        "request": {
+                            "method": "PATCH",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "first_name": "Aarav",
+                                        "last_name": "Sharma",
+                                        "phone": "+919876543210",
+                                        "address": "108 Lotus Tower, Bengaluru",
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/users/me"),
+                            "description": "Updates personal demographic details for current authenticated caller.",
+                        },
+                    },
+                ],
+            },
+            # 3. Doctors & Directory
+            {
+                "name": "3. Doctors & Directory",
+                "item": [
+                    {
+                        "name": "Search & Filter Doctors",
+                        "request": {
+                            "auth": {"type": "noauth"},
+                            "method": "GET",
+                            "header": [],
+                            "url": make_url(
+                                "/api/v1/doctors",
+                                [
+                                    {"key": "specialization", "value": "Kayachikitsa"},
+                                    {"key": "max_fee", "value": "1000.00"},
+                                    {"key": "min_rating", "value": "4.0"},
+                                    {"key": "page", "value": "1"},
+                                    {"key": "page_size", "value": "10"},
+                                ],
+                            ),
+                            "description": "Public search across active doctors with multi-field filtering and pagination.",
+                        },
+                    },
+                    {
+                        "name": "Get Doctor by ID",
+                        "request": {
+                            "auth": {"type": "noauth"},
+                            "method": "GET",
+                            "header": [],
+                            "url": make_url("/api/v1/doctors/{{doctor_id}}"),
+                            "description": "Retrieves full professional details for a specific doctor.",
+                        },
+                    },
+                    {
+                        "name": "Create / Init Doctor Profile (Saves doctor_id)",
+                        "event": make_event("test", DOCTOR_PROFILE_TEST_SCRIPT),
+                        "request": {
+                            "method": "POST",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "specialization": "Kayachikitsa",
+                                        "license_number": "AYUSH-DL-{{$timestamp}}",
+                                        "experience_years": 12,
+                                        "consultation_fee": "750.00",
+                                        "bio": "Senior Ayurvedic Practitioner specializing in chronic stress management and holistic wellness.",
+                                        "languages": ["English", "Hindi", "Sanskrit"],
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/doctors/me"),
+                            "description": "Creates professional doctor profile for authenticated DOCTOR user and automatically sets `doctor_id` in collection variables.",
+                        },
+                    },
+                    {
+                        "name": "Update Doctor Profile",
+                        "request": {
+                            "method": "PATCH",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "consultation_fee": "850.00",
+                                        "bio": "Updated biography with Ayurvedic clinical excellence notes.",
+                                        "is_available": True,
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/doctors/me"),
+                            "description": "Updates professional details and consultation fee for authenticated doctor.",
+                        },
+                    },
+                ],
+            },
+            # 4. Availability & Scheduling
+            {
+                "name": "4. Availability & Scheduling",
+                "item": [
+                    {
+                        "name": "Batch Create Availability Slots (Saves slot_id)",
+                        "event": make_event("test", AVAILABILITY_SLOTS_TEST_SCRIPT),
+                        "request": {
+                            "method": "POST",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "slots": [
+                                            {
+                                                "start_time": "2027-01-10T10:00:00Z",
+                                                "end_time": "2027-01-10T10:30:00Z",
+                                            },
+                                            {
+                                                "start_time": "2027-01-10T11:00:00Z",
+                                                "end_time": "2027-01-10T11:30:00Z",
+                                            },
+                                        ]
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/doctors/me/availability"),
+                            "description": "Batch schedules availability slots for authenticated doctor and captures `slot_id` into collection variables.",
+                        },
+                    },
+                    {
+                        "name": "Get Doctor Available Slots",
+                        "request": {
+                            "auth": {"type": "noauth"},
+                            "method": "GET",
+                            "header": [],
+                            "url": make_url(
+                                "/api/v1/doctors/{{doctor_id}}/availability",
+                                [
+                                    {"key": "from_time", "value": "2027-01-01T00:00:00Z"},
+                                    {"key": "to_time", "value": "2027-01-31T23:59:59Z"},
+                                ],
+                            ),
+                            "description": "Lists all active, available booking slots for a given doctor.",
+                        },
+                    },
+                    {
+                        "name": "Update Slot Status",
+                        "request": {
+                            "method": "PATCH",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "status": "AVAILABLE",
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/availability/{{slot_id}}"),
+                            "description": "Updates availability status of an individual schedule slot.",
+                        },
+                    },
+                    {
+                        "name": "Delete Availability Slot",
+                        "request": {
+                            "method": "DELETE",
+                            "header": [],
+                            "url": make_url("/api/v1/availability/{{slot_id}}"),
+                            "description": "Deletes an unbooked availability slot.",
+                        },
+                    },
+                ],
+            },
+            # 5. Consultations
+            {
+                "name": "5. Consultations",
+                "item": [
+                    {
+                        "name": "Book Consultation (Saves consultation_id)",
+                        "event": make_event("test", BOOKING_TEST_SCRIPT),
+                        "request": {
+                            "method": "POST",
+                            "header": [
+                                {"key": "Content-Type", "value": "application/json"},
+                                {"key": "Idempotency-Key", "value": "{{$guid}}"},
+                            ],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "doctor_id": "{{doctor_id}}",
+                                        "slot_id": "{{slot_id}}",
+                                        "reason": "Digestive imbalance and chronic sleep issues.",
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/consultations"),
+                            "description": "Atomically books an open slot for authenticated PATIENT using an Idempotency-Key header. Automatically saves `consultation_id`.",
+                        },
+                    },
+                    {
+                        "name": "List My Consultations",
+                        "request": {
+                            "method": "GET",
+                            "header": [],
+                            "url": make_url(
+                                "/api/v1/consultations",
+                                [
+                                    {"key": "status", "value": "SCHEDULED"},
+                                    {"key": "page", "value": "1"},
+                                    {"key": "page_size", "value": "10"},
+                                ],
+                            ),
+                            "description": "Lists paginated consultations for the authenticated caller (scoped by role).",
+                        },
+                    },
+                    {
+                        "name": "Get Consultation Details",
+                        "request": {
+                            "method": "GET",
+                            "header": [],
+                            "url": make_url("/api/v1/consultations/{{consultation_id}}"),
+                            "description": "Fetches consultation details enforcing patient/doctor IDOR authorization.",
+                        },
+                    },
+                    {
+                        "name": "Start Consultation (Doctor only)",
+                        "request": {
+                            "method": "POST",
+                            "header": [],
+                            "url": make_url("/api/v1/consultations/{{consultation_id}}/start"),
+                            "description": "Marks consultation status as IN_PROGRESS. Caller must be the assigned doctor.",
+                        },
+                    },
+                    {
+                        "name": "Complete Consultation (Doctor only)",
+                        "request": {
+                            "method": "POST",
+                            "header": [],
+                            "url": make_url("/api/v1/consultations/{{consultation_id}}/complete"),
+                            "description": "Marks consultation as COMPLETED. Caller must be the assigned doctor.",
+                        },
+                    },
+                    {
+                        "name": "Cancel Consultation",
+                        "request": {
+                            "method": "POST",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "reason": "Unavoidable emergency work conflict.",
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/consultations/{{consultation_id}}/cancel"),
+                            "description": "Cancels upcoming consultation and restores the slot to AVAILABLE.",
+                        },
+                    },
+                ],
+            },
+            # 6. Prescriptions
+            {
+                "name": "6. Prescriptions",
+                "item": [
+                    {
+                        "name": "Issue Prescription (Doctor only, Saves prescription_id)",
+                        "event": make_event("test", PRESCRIPTION_TEST_SCRIPT),
+                        "request": {
+                            "method": "POST",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "diagnosis": "Vata-Pitta digestive imbalance with sleep impairment",
+                                        "medications": [
+                                            {
+                                                "name": "Ashwagandha Churna",
+                                                "dosage": "1 teaspoon (3g)",
+                                                "frequency": "Twice daily with warm milk",
+                                                "duration": "30 days",
+                                                "instructions": "Take 30 minutes before bedtime",
+                                            },
+                                            {
+                                                "name": "Triphala Tablets",
+                                                "dosage": "2 tablets (500mg each)",
+                                                "frequency": "Once daily at night",
+                                                "duration": "15 days",
+                                                "instructions": "Take with lukewarm water",
+                                            },
+                                        ],
+                                        "notes": "Follow Sattvic diet, avoid cold beverages and late dinners.",
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/consultations/{{consultation_id}}/prescriptions"),
+                            "description": "Issues an immutable medical prescription for an encounter. Saves `prescription_id`.",
+                        },
+                    },
+                    {
+                        "name": "Get Consultation Prescription",
+                        "request": {
+                            "method": "GET",
+                            "header": [],
+                            "url": make_url("/api/v1/consultations/{{consultation_id}}/prescriptions"),
+                            "description": "Retrieves the prescription issued for a given consultation.",
+                        },
+                    },
+                    {
+                        "name": "Get Prescription by ID",
+                        "request": {
+                            "method": "GET",
+                            "header": [],
+                            "url": make_url("/api/v1/prescriptions/{{prescription_id}}"),
+                            "description": "Fetches prescription details by ID with IDOR check.",
+                        },
+                    },
+                ],
+            },
+            # 7. Payments
+            {
+                "name": "7. Payments",
+                "item": [
+                    {
+                        "name": "Process Consultation Payment (Saves payment_id)",
+                        "event": make_event("test", PAYMENT_TEST_SCRIPT),
+                        "request": {
+                            "method": "POST",
+                            "header": [
+                                {"key": "Content-Type", "value": "application/json"},
+                                {"key": "Idempotency-Key", "value": "{{$guid}}"},
+                            ],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "amount": "750.00",
+                                        "currency": "INR",
+                                        "mock_mode": "SUCCESS",
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/consultations/{{consultation_id}}/payments"),
+                            "description": "Charges consultation fee using an Idempotency-Key header. Automatically saves `payment_id`.",
+                        },
+                    },
+                    {
+                        "name": "List Payments for Consultation",
+                        "request": {
+                            "method": "GET",
+                            "header": [],
+                            "url": make_url("/api/v1/consultations/{{consultation_id}}/payments"),
+                            "description": "Lists all payment records and status transitions for a consultation.",
+                        },
+                    },
+                    {
+                        "name": "Refund Payment (Admin only)",
+                        "request": {
+                            "method": "POST",
+                            "header": [{"key": "Content-Type", "value": "application/json"}],
+                            "body": {
+                                "mode": "raw",
+                                "raw": json.dumps(
+                                    {
+                                        "reason": "Doctor cancellation prior to appointment start time.",
+                                    },
+                                    indent=2,
+                                ),
+                            },
+                            "url": make_url("/api/v1/payments/{{payment_id}}/refund"),
+                            "description": "Processes refund for captured payment. Admin role required.",
+                        },
+                    },
+                ],
+            },
+            # 8. Admin & Compliance
+            {
+                "name": "8. Admin & Compliance",
+                "item": [
+                    {
+                        "name": "List Audit Logs (Admin only)",
+                        "request": {
+                            "method": "GET",
+                            "header": [],
+                            "url": make_url(
+                                "/api/v1/audit/logs",
+                                [
+                                    {"key": "action", "value": "LOGIN"},
+                                    {"key": "resource_type", "value": "USER"},
+                                    {"key": "page", "value": "1"},
+                                    {"key": "page_size", "value": "20"},
+                                ],
+                            ),
+                            "description": "Retrieves tamper-proof audit trail records. Admin role required.",
+                        },
+                    },
+                ],
+            },
+        ],
+    }
+
+
+def main():
+    col = build_collection()
+    
+    # Save to both docs/ and root for maximum discoverability
+    destinations = [
+        Path("docs/amrutam-telemedicine.postman_collection.json"),
+        Path("amrutam-telemedicine.postman_collection.json"),
+    ]
+
+    for p in destinations:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(col, f, indent=2)
+        print(f"Written Postman collection to {p.resolve()} ({p.stat().st_size} bytes)")
+
+
+if __name__ == "__main__":
+    main()
