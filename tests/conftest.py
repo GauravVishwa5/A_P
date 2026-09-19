@@ -109,9 +109,6 @@ rate_limit_module.get_redis_client = lambda: mock_redis_instance  # type: ignore
 security_module.get_redis_client = lambda: mock_redis_instance  # type: ignore[assignment,return-value]
 
 
-
-
-
 _test_db_path = tempfile.mktemp(suffix="_test_telemed.db")
 test_engine = create_async_engine(
     f"sqlite+aiosqlite:///{_test_db_path}",

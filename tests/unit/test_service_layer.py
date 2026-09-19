@@ -98,9 +98,7 @@ async def test_auth_login_nonexistent_user_raises_unauthorized(db_session: Async
     """Verify login with unknown email raises UnauthorizedException."""
     service = AuthService(db_session)
     with pytest.raises(UnauthorizedException) as exc_info:
-        await service.login(
-            UserLoginRequest(email="ghost@example.com", password="AnyPassword1!")
-        )
+        await service.login(UserLoginRequest(email="ghost@example.com", password="AnyPassword1!"))
     assert exc_info.value.error_code == "INVALID_CREDENTIALS"
 
 
@@ -264,9 +262,7 @@ async def _create_test_doctor_user(session: AsyncSession) -> tuple[User, Doctor]
     return user, doctor
 
 
-async def _create_test_slot(
-    session: AsyncSession, doctor: Doctor
-) -> AvailabilitySlot:
+async def _create_test_slot(session: AsyncSession, doctor: Doctor) -> AvailabilitySlot:
     """Helper to persist a future availability slot."""
     start_time = datetime.now(UTC) + timedelta(days=2)
     slot = AvailabilitySlot(

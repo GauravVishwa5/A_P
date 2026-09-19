@@ -147,9 +147,7 @@ async def test_100_concurrent_booking_race_for_same_slot(async_client: AsyncClie
         )
 
         # Check slot status == BOOKED
-        slot_stmt = select(AvailabilitySlot).where(
-            AvailabilitySlot.id == UUID(slot_id)
-        )
+        slot_stmt = select(AvailabilitySlot).where(AvailabilitySlot.id == UUID(slot_id))
         slot = (await session.execute(slot_stmt)).scalar_one()
         assert slot.status == SlotStatus.BOOKED.value, (
             f"Database invariant violated: slot status expected BOOKED, got {slot.status}"
