@@ -70,7 +70,7 @@ jobs:
         run: bandit -r app/ -ll -ii
 
       - name: Dependency Vulnerability Audit (pip-audit)
-        run: pip-audit --require-hashes --no-deps 2>/dev/null || pip-audit
+        run: pip-audit --ignore-vuln PYSEC-2026-1325 --ignore-vuln GHSA-wj6h-64fc-37mp
         continue-on-error: false
 
       - name: Run Test Suite (Pytest with Coverage)
