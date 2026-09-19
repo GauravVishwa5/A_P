@@ -2,7 +2,8 @@
 name = "amrutam-telemedicine"
 version = "1.0.0"
 description = "Production-grade backend for Amrutam's Telemedicine System"
-authors = [{ name = "Senior Backend Architect" }]
+authors = [{ name = "Gaurav Vishwakarma" }]
+license = { text = "Proprietary — Evaluation Use Only" }
 requires-python = ">=3.11"
 readme = "README.md"
 dependencies = [
