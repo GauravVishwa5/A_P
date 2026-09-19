@@ -54,7 +54,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install .
+          pip install -e .
           pip install ruff mypy bandit pip-audit pytest pytest-asyncio pytest-cov types-passlib types-python-jose aiosqlite
 
       - name: Code Formatting Check (Ruff)
@@ -80,7 +80,7 @@ jobs:
           ENVIRONMENT: testing
           SECRET_KEY: ci-test-secret-key-min-32-chars-xx
           JWT_SECRET_KEY: ci-test-jwt-secret-key-min-32-chars
-        run: pytest --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=70 tests/
+        run: python -m pytest --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=70 tests/
 
       - name: Upload Coverage to Codecov
         uses: codecov/codecov-action@v4
