@@ -55,7 +55,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install .
-          pip install ruff mypy bandit pip-audit pytest pytest-asyncio pytest-cov
+          pip install ruff mypy bandit pip-audit pytest pytest-asyncio pytest-cov types-passlib types-python-jose
 
       - name: Code Formatting Check (Ruff)
         run: ruff format --check .

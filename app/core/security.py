@@ -4,7 +4,7 @@ import hashlib
 import logging
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import pyotp
@@ -29,7 +29,7 @@ pwd_context = CryptContext(
 
 def hash_password(password: str) -> str:
     """Hash plaintext password using Argon2id."""
-    return pwd_context.hash(password)
+    return cast(str, pwd_context.hash(password))
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -75,12 +75,13 @@ def create_jwt_token(
         payload.update(extra_claims)
 
     headers = {"kid": settings.JWT_KID, "alg": settings.JWT_ALGORITHM}
-    return jwt.encode(
+    encoded_token = jwt.encode(
         payload,
         settings.JWT_SECRET_KEY,
         algorithm=settings.JWT_ALGORITHM,
         headers=headers,
     )
+    return cast(str, encoded_token)
 
 
 def decode_jwt_token(token: str) -> dict[str, Any]:
@@ -98,7 +99,7 @@ def decode_jwt_token(token: str) -> dict[str, Any]:
             algorithms=[settings.JWT_ALGORITHM],
             issuer=settings.APP_NAME,
         )
-        return payload
+        return cast(dict[str, Any], payload)
     except JWTError as exc:
         raise UnauthorizedException(
             f"Invalid or expired access token: {exc}", error_code="INVALID_TOKEN"
