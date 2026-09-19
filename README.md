@@ -1,5 +1,11 @@
 # Amrutam Telemedicine Platform — Backend
 
+> **Copyright © 2026 Gaurav Vishwakarma — Evaluation Use Only**
+>
+> This repository is publicly accessible for assignment evaluation.
+> The source code is not open-source and may not be reused,
+> redistributed, modified, or used commercially without permission.
+
 A production-grade, highly resilient backend for the **Amrutam Telemedicine Platform** built with **Python 3.12**, **FastAPI**, **SQLAlchemy 2.0 (Async)**, **PostgreSQL 16**, **Redis 7**, and **ARQ**.
 
 ---
@@ -109,3 +115,27 @@ Detailed design and architecture specifications:
 - [Concurrency & Performance Benchmark Report](docs/performance-report.md)
 - [API Demonstration & Walkthrough Script](docs/demo-script.md)
 - [Postman Collection](docs/amrutam-telemedicine.postman_collection.json) (Auto-Bearer token on Register/Login)
+
+---
+
+## License & Usage
+
+Copyright © 2026 Gaurav Vishwakarma. All rights reserved.
+
+This repository is publicly available for **assignment evaluation,
+technical review, and educational assessment purposes only**.
+
+The source code is **not released under an open-source license**.
+
+Viewing and evaluating the repository for the purpose of reviewing
+the Amrutam Backend Developer Assignment is permitted.
+
+Copying, modifying, redistributing, republishing, sublicensing,
+commercial use, production use, or incorporating substantial portions
+of this source code into another project is not permitted without
+explicit written permission from the copyright holder.
+
+For permissions outside the evaluation scope, please contact the
+copyright holder.
+
+See [`LICENSE`](./LICENSE) for the full terms.
