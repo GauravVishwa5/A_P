@@ -93,11 +93,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
-        if request.url.path.startswith(("/docs", "/redoc", "/openapi.json")):
-            response.headers["Content-Security-Policy"] = (
-                "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval';"
-            )
-        else:
+        if not request.url.path.startswith(("/docs", "/redoc", "/openapi.json")):
             response.headers["Content-Security-Policy"] = "default-src 'self'"
         if settings.ENVIRONMENT == "production":
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
