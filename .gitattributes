@@ -1,0 +1,13 @@
+# Auto detect text files and perform LF normalization
+* text=auto eol=lf
+
+# Explicitly normalize YAML and script files to LF
+*.yml text eol=lf
+*.yaml text eol=lf
+*.sh text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+Dockerfile text eol=lf
+alembic.ini text eol=lf
+pyproject.toml text eol=lf

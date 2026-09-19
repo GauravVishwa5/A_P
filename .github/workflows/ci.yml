@@ -80,9 +80,7 @@ jobs:
           ENVIRONMENT: testing
           SECRET_KEY: ci-test-secret-key-min-32-chars-xx
           JWT_SECRET_KEY: ci-test-jwt-secret-key-min-32-chars
-        run: |
-          pytest --cov=app --cov-report=xml --cov-report=term-missing \
-                 --cov-fail-under=70 tests/
+        run: pytest --cov=app --cov-report=xml --cov-report=term-missing --cov-fail-under=70 tests/
 
       - name: Upload Coverage to Codecov
         uses: codecov/codecov-action@v4
