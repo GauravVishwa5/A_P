@@ -7,7 +7,7 @@ A comprehensive audit checklist verifying security controls implemented across t
 - [x] **JWT Cryptography**: Signed with `HS256`, explicit `kid="v1"` header, and expiration enforcement.
 - [x] **JTI Blocklisting**: Revoked tokens stored in Redis with remaining TTL for instant logout invalidation.
 - [x] **Refresh Token Rotation**: One-time use tokens with automated cryptographic family revocation on token reuse.
-- [x] **Multi-Factor Authentication**: RFC 6238 TOTP with secret encryption, QR provisioning URI, and single-use time windows.
+- [x] **Multi-Factor Authentication**: RFC 6238 TOTP with Base32 secret generation, QR provisioning URI, and single-use time windows.
 
 ## 2. Authorization & Data Isolation (IDOR)
 - [x] **UUIDv4 Identifiers**: All resources use non-enumerable UUIDv4 primary keys.
@@ -20,7 +20,7 @@ A comprehensive audit checklist verifying security controls implemented across t
 ## 3. Data Integrity & Concurrency
 - [x] **Pessimistic Slot Locking**: `SELECT ... FOR UPDATE` prevents simultaneous booking interleaving.
 - [x] **Database-Level Invariant**: Partial unique index (`uq_consultations_slot_active`) prevents double bookings.
-- [x] **GiST Exclusion Constraint**: Prevents overlapping doctor availability slot intervals.
+- [x] **Doctor Slot Overlap Protection**: Enforced via application-level transactional interval query validation (`check_overlap`) combined with database-level composite unique constraint on `(doctor_id, start_time)` and active consultation barrier index (`uq_consultations_slot_active`).
 - [x] **Idempotency Keys**: Clients send `Idempotency-Key` header with SHA-256 hash payload verification.
 
 ## 4. API & Network Security

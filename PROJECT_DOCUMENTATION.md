@@ -119,8 +119,8 @@ The **Amrutam Telemedicine Platform** is an enterprise-grade backend system engi
    - Critical mutative endpoints (`POST /api/v1/consultations` and `POST /api/v1/consultations/{id}/payments`) enforce the `Idempotency-Key` header.
    - The system checks an `idempotency_keys` table. If the same key is submitted with the exact same request hash, the original stored response is returned without re-executing business logic. If a payload mismatch is detected for the same key, a `422 Unprocessable Entity` is returned.
 
-4. **Transactional Outbox & Asynchronous Worker Pattern**:
-   - Heavy tasks (e.g. sending SMS/email confirmations, reconciling expired payments) are decoupled from the HTTP request-response cycle using Redis and ARQ background workers.
+4. **Database-Backed Notification Ledger & Asynchronous Worker Pattern**:
+   - Heavy tasks (e.g. sending SMS/email confirmations, reconciling expired payments) are decoupled from the HTTP request-response cycle using a PostgreSQL notification ledger and Redis-backed ARQ background workers.
 
 ---
 
@@ -167,6 +167,8 @@ e:/A_P/
 │   │   ├── security.py                  # Argon2id password hashing, JWT creation/decoding, TOTP
 │   │   └── tracing.py                   # OpenTelemetry distributed tracing configuration
 │   ├── modules/                         # Cohesive domain feature modules
+│   │   ├── admin/                       # Aggregate business analytics and platform metrics (Admin-only)
+│   │   │   ├── __init__.py, schemas.py, service.py, router.py
 │   │   ├── audit/                       # Immutable compliance logging and administrative queries
 │   │   │   ├── models.py, schemas.py, service.py, router.py
 │   │   ├── auth/                        # User registration, login, token rotation, TOTP MFA
@@ -177,7 +179,7 @@ e:/A_P/
 │   │   │   ├── models.py, schemas.py, service.py, router.py
 │   │   ├── doctors/                     # Professional doctor directory, search, profile editing
 │   │   │   ├── models.py, schemas.py, service.py, router.py
-│   │   ├── notifications/               # Outbox delivery ledger for email and SMS alerts
+│   │   ├── notifications/               # Notification ledger for email and SMS alerts
 │   │   │   ├── models.py, schemas.py, service.py, router.py
 │   │   ├── payments/                    # Idempotent payments, mock payment gateway, admin refunds
 │   │   │   ├── models.py, schemas.py, service.py, router.py, provider.py
@@ -245,11 +247,11 @@ erDiagram
 - **Fields**:
   - `id` (`UUID`, PK): Unique user identifier.
   - `email` (`VARCHAR(255)`, Unique, Indexed): User email address.
-  - `hashed_password` (`VARCHAR(255)`): Argon2id encrypted password hash.
+  - `hashed_password` (`VARCHAR(255)`): Argon2id cryptographically hashed password.
   - `role` (`ENUM`: `PATIENT`, `DOCTOR`, `ADMIN`): System permission role.
   - `is_active` (`BOOLEAN`, Default: `TRUE`): Active account status.
   - `is_mfa_enabled` (`BOOLEAN`, Default: `FALSE`): TOTP MFA activation status.
-  - `mfa_secret` (`VARCHAR(255)`, Nullable): Encrypted Base32 TOTP secret.
+  - `mfa_secret` (`VARCHAR(255)`, Nullable): Base32 encoded TOTP secret.
   - `created_at` (`TIMESTAMPTZ`): UTC creation timestamp.
   - `updated_at` (`TIMESTAMPTZ`): UTC update timestamp.
 
@@ -290,7 +292,7 @@ erDiagram
   - `end_time` (`TIMESTAMPTZ`): End of appointment window.
   - `status` (`ENUM`: `AVAILABLE`, `BOOKED`, `CANCELLED`): Current availability state.
   - `created_at`, `updated_at` (`TIMESTAMPTZ`).
-  - **Constraint**: Doctor ID and overlapping time ranges are guarded against collision.
+  - **Constraint**: Enforced via application-level transactional interval query validation (`check_overlap`), complemented by database-level composite unique constraint on `(doctor_id, start_time)` and check constraint `chk_slot_time` (`end_time > start_time`). Active consultations are further protected by the partial unique index barrier `uq_consultations_slot_active`.
 
 #### 5. `consultations`
 - **Purpose**: Central clinical encounter record.
@@ -489,7 +491,7 @@ The background worker runs as a dedicated non-blocking ARQ process connected to 
 
 ---
 
-## 9. Complete API Reference (All 32 Endpoints with Payloads)
+## 9. Complete API Reference (All 33 Endpoints with Payloads)
 
 ### 9.1 Observability & Health (3 Endpoints)
 
@@ -921,6 +923,50 @@ The background worker runs as a dedicated non-blocking ARQ process connected to 
   "total": 1,
   "page": 1,
   "size": 20
+}
+```
+
+---
+
+### 9.10 Admin Business Analytics (1 Endpoint)
+
+#### 33. `GET /api/v1/admin/analytics`
+- **Auth**: Bearer Token (Admin Role Required)
+- **Description**: Computes high-performance PostgreSQL aggregate KPIs across users, consultation lifecycle distributions, gross/net financial revenue, and clinical documentation without loading table rows into memory.
+- **Response `200 OK`**:
+```json
+{
+  "generated_at": "2026-09-19T05:30:00Z",
+  "users": {
+    "total_users": 150,
+    "total_patients": 120,
+    "total_doctors": 28,
+    "active_patients": 115,
+    "active_doctors": 25
+  },
+  "consultations": {
+    "total_consultations": 320,
+    "scheduled": 45,
+    "confirmed": 90,
+    "in_progress": 15,
+    "completed": 155,
+    "cancelled": 15,
+    "cancellation_rate_percent": 4.69
+  },
+  "payments": {
+    "total_payments": 310,
+    "successful": 280,
+    "failed": 18,
+    "initiated": 12,
+    "refunded": 5,
+    "gross_revenue": "238000.00",
+    "refunded_amount": "4250.00",
+    "net_revenue": "233750.00",
+    "currency": "INR"
+  },
+  "clinical": {
+    "total_prescriptions": 150
+  }
 }
 ```
 

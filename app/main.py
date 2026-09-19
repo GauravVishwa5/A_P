@@ -15,6 +15,7 @@ from app.core.metrics import get_metrics_content
 from app.core.middleware import CorrelationAndMetricsMiddleware, SecurityHeadersMiddleware
 from app.core.redis import check_redis_health, close_redis
 from app.core.tracing import setup_tracing
+from app.modules.admin.router import router as admin_router
 from app.modules.audit.router import router as audit_router
 from app.modules.auth.router import router as auth_router
 from app.modules.availability.router import router as availability_router
@@ -98,6 +99,7 @@ def create_application() -> FastAPI:
     app.include_router(prescriptions_router)
     app.include_router(payments_router)
     app.include_router(audit_router)
+    app.include_router(admin_router)
 
     # Initialize Distributed Tracing
     setup_tracing(app, settings.APP_NAME)

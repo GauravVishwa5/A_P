@@ -1349,6 +1349,39 @@ async def test_all_endpoints() -> None:
             f"  {r.status_code} GET /api/v1/audit/logs ({lat}ms) -> {len(audit_items)} audit log entries"
         )
 
+        # ---------------------------------------------------------
+        # Category 10: Admin Business Analytics (1)
+        # ---------------------------------------------------------
+        print("\n[Category 10: Admin Business Analytics]")
+
+        # 33. GET /api/v1/admin/analytics (Admin-only)
+        t0 = time.perf_counter()
+        r = await client.get(
+            "/api/v1/admin/analytics", headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        lat = round((time.perf_counter() - t0) * 1000, 2)
+        analytics_data = r.json() if r.status_code == 200 else {}
+        passed = (
+            r.status_code == 200 and "users" in analytics_data and "consultations" in analytics_data
+        )
+        results.append(
+            {
+                "id": 33,
+                "method": "GET",
+                "path": "/api/v1/admin/analytics",
+                "status": r.status_code,
+                "expected": 200,
+                "latency_ms": lat,
+                "passed": passed,
+                "tag": "Admin Analytics",
+                "summary": "Retrieve Platform-Wide Business Analytics (Admin)",
+                "details": f"Aggregated {analytics_data.get('users', {}).get('total_users', 0)} users, {analytics_data.get('consultations', {}).get('total_consultations', 0)} consultations, gross revenue ₹{analytics_data.get('payments', {}).get('gross_revenue', '0')}",
+            }
+        )
+        print(
+            f"  {r.status_code} GET /api/v1/admin/analytics ({lat}ms) -> Aggregations computed successfully"
+        )
+
     # ---------------------------------------------------------
     # Generate Summary Report
     # ---------------------------------------------------------
@@ -1384,7 +1417,7 @@ async def test_all_endpoints() -> None:
         "",
         f"> **Generated:** {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}  ",
         "> **Test Execution Environment:** Localhost (PostgreSQL `amrutam_db`)  ",
-        f"> **Total Endpoints Tested:** {total} / 32  ",
+        f"> **Total Endpoints Tested:** {total} / 33  ",
         f"> **Pass Rate:** **{passed_count} / {total} ({(passed_count / total) * 100:.1f}%)**  ",
         f"> **Average Latency:** **{avg_latency} ms**",
         "",
@@ -1400,7 +1433,7 @@ async def test_all_endpoints() -> None:
         "",
         "---",
         "",
-        "## 2. All 32 Endpoints Test Results",
+        "## 2. All 33 Endpoints Test Results",
         "",
         "| # | Method | Endpoint Path | Category | Status Code | Latency | Result | Key Details / Payload |",
         "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",

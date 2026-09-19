@@ -33,6 +33,10 @@ class Settings(BaseSettings):
     )
     JWT_ALGORITHM: str = "HS256"
     JWT_KID: str = "v1"
+    JWT_PREVIOUS_KEYS: dict[str, str] = Field(
+        default_factory=dict,
+        description="Map of previous key identifiers to secrets for rotation grace periods",
+    )
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 15
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     MFA_ISSUER: str = "Amrutam Telemedicine"

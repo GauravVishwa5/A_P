@@ -11,7 +11,7 @@ import pyotp
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from app.common.exceptions import UnauthorizedException
+from app.common.exceptions import AppException, UnauthorizedException
 from app.core.config import get_settings
 from app.core.redis import get_redis_client
 
@@ -84,22 +84,37 @@ def create_jwt_token(
     return cast(str, encoded_token)
 
 
+def get_jwt_verification_key(kid: str | None) -> str:
+    """Retrieve corresponding secret key for a given key identifier (kid)."""
+    if not kid:
+        raise UnauthorizedException(
+            "Token missing key identifier (kid)", error_code="MISSING_TOKEN_KID"
+        )
+    if kid == settings.JWT_KID:
+        return settings.JWT_SECRET_KEY
+    if kid in settings.JWT_PREVIOUS_KEYS:
+        return settings.JWT_PREVIOUS_KEYS[kid]
+    raise UnauthorizedException(
+        f"Unrecognized token key identifier '{kid}'", error_code="INVALID_TOKEN_KID"
+    )
+
+
 def decode_jwt_token(token: str) -> dict[str, Any]:
-    """Decode and validate signature and claims of JWT access token."""
+    """Decode and validate signature and claims of JWT access token with rotation support."""
     try:
         header = jwt.get_unverified_header(token)
-        if header.get("kid") != settings.JWT_KID:
-            raise UnauthorizedException(
-                "Invalid token key identifier", error_code="INVALID_TOKEN_KID"
-            )
+        kid = header.get("kid")
+        verification_key = get_jwt_verification_key(kid)
 
         payload = jwt.decode(
             token,
-            settings.JWT_SECRET_KEY,
+            verification_key,
             algorithms=[settings.JWT_ALGORITHM],
             issuer=settings.APP_NAME,
         )
         return cast(dict[str, Any], payload)
+    except AppException:
+        raise
     except JWTError as exc:
         raise UnauthorizedException(
             f"Invalid or expired access token: {exc}", error_code="INVALID_TOKEN"
