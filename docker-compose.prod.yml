@@ -45,6 +45,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      disable: true
     networks:
       - amrutam-network
 
