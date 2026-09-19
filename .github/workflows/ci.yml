@@ -104,3 +104,37 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL
+
+  deploy:
+    name: Deploy to AWS EC2
+    needs: quality-and-tests
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Check Deployment Credentials
+        id: check_creds
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          if [ -z "$EC2_HOST" ] || [ -z "$EC2_SSH_KEY" ]; then
+            echo "::warning::EC2 deployment skipped: EC2_HOST or EC2_SSH_KEY secret not configured in GitHub repository settings."
+            echo "configured=false" >> $GITHUB_OUTPUT
+          else
+            echo "configured=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy to EC2 via SSH
+        if: steps.check_creds.outputs.configured == 'true'
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER || 'ubuntu' }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd ~/amrutam-backend
+            git pull origin main
+            docker compose -f docker-compose.prod.yml up -d --build
+            docker compose -f docker-compose.prod.yml exec -T api alembic upgrade head
+            docker image prune -f
