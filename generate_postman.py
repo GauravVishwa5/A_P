@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Script to generate a production-ready Postman collection v2.1.0 with automated token management."""
 
 import json
@@ -697,7 +698,9 @@ def build_collection() -> dict:
                                     indent=2,
                                 ),
                             },
-                            "url": make_url("/api/v1/consultations/{{consultation_id}}/prescriptions"),
+                            "url": make_url(
+                                "/api/v1/consultations/{{consultation_id}}/prescriptions"
+                            ),
                             "description": "Issues an immutable medical prescription for an encounter. Saves `prescription_id`.",
                         },
                     },
@@ -706,7 +709,9 @@ def build_collection() -> dict:
                         "request": {
                             "method": "GET",
                             "header": [],
-                            "url": make_url("/api/v1/consultations/{{consultation_id}}/prescriptions"),
+                            "url": make_url(
+                                "/api/v1/consultations/{{consultation_id}}/prescriptions"
+                            ),
                             "description": "Retrieves the prescription issued for a given consultation.",
                         },
                     },
@@ -807,7 +812,7 @@ def build_collection() -> dict:
 
 def main():
     col = build_collection()
-    
+
     # Save to both docs/ and root for maximum discoverability
     destinations = [
         Path("docs/amrutam-telemedicine.postman_collection.json"),

@@ -21,7 +21,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U postgres -d amrutam_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 5
@@ -89,6 +89,7 @@ jobs:
         if: always()
         with:
           files: ./coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
           verbose: false
 
